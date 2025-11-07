@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
-from scipy import stats
 import statsmodels.stats.api as sms
+
+from math import erf, sqrt
+from statsmodels.stats.weightstats import ttest_ind as sm_ttest_ind
 
 def validate_and_cast(df, variant_col, metric_col, metric_type):
     if variant_col not in df.columns:
@@ -36,7 +38,7 @@ def proportion_ztest(control, treatment):
     pooled = (conv_c + conv_t) / (n_c + n_t)
     se = np.sqrt(pooled * (1 - pooled) * (1 / n_c + 1 / n_t)) if pooled not in (0, 1) else 0
     z = (p_t - p_c) / se if se > 0 else 0
-    p_value = 2 * (1 - stats.norm.cdf(abs(z)))
+    p_value = 2 * (1 - _norm_cdf(abs(z)))
     diff = p_t - p_c
     ci_low = diff - 1.96 * se
     ci_high = diff + 1.96 * se
@@ -53,7 +55,8 @@ def ttest_means(control, treatment):
     n_c, n_t = len(control), len(treatment)
     mean_c, mean_t = control.mean(), treatment.mean()
     diff = mean_t - mean_c
-    tstat, p_value = stats.ttest_ind(treatment, control, equal_var=False)
+    # Welch t-test via statsmodels (equal_var=False)
+    tstat, p_value, _ = sm_ttest_ind(treatment, control, usevar="unequal")
     se = np.sqrt(np.var(treatment, ddof=1) / n_t + np.var(control, ddof=1) / n_c)
     ci_low = diff - 1.96 * se
     ci_high = diff + 1.96 * se
@@ -98,3 +101,7 @@ def analyze(df, variant_col, metric_col, metric_type):
         )
     res["power"] = power
     return res
+
+def _norm_cdf(x: float) -> float:
+    # Standard normal CDF via error function (no SciPy needed)
+    return 0.5 * (1.0 + erf(x / sqrt(2.0)))
